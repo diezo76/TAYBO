@@ -1,0 +1,367 @@
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Soft UI Dashboard Colors - Palette exacte */
+  --color-primary: #cb0c9f;
+  --color-primary-light: #fce7f3;
+  --color-primary-dark: #a20a7f;
+  --color-secondary: #8392ab;
+  --color-secondary-light: #f0f2f5;
+  --color-secondary-dark: #344767;
+  --color-info: #17c1e8;
+  --color-success: #82d616;
+  --color-warning: #fbcf33;
+  --color-error: #ea0606;
+  --color-light: #e9ecef;
+  --color-dark: #344767;
+  
+  /* Gray scale */
+  --color-white: #FFFFFF;
+  --color-gray-50: #f8f9fa;
+  --color-gray-100: #e9ecef;
+  --color-gray-200: #dee2e6;
+  --color-gray-300: #ced4da;
+  --color-gray-400: #adb5bd;
+  --color-gray-500: #8392ab;
+  --color-gray-600: #67748e;
+  --color-gray-700: #495057;
+  --color-gray-800: #344767;
+  --color-gray-900: #212529;
+  
+  /* Soft UI Shadows */
+  --shadow-soft: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-soft-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-soft-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-soft-xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-colored: 0 8px 16px -4px rgba(203, 12, 159, 0.4);
+  --shadow-colored-md: 0 12px 20px -4px rgba(203, 12, 159, 0.3);
+  --shadow-colored-lg: 0 20px 30px -4px rgba(203, 12, 159, 0.25);
+  
+  /* Soft UI Border Radius */
+  --radius-soft: 0.75rem;
+  --radius-soft-lg: 1rem;
+  --radius-soft-xl: 1.5rem;
+  
+  /* Soft UI Gradients */
+  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  --gradient-info: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  --gradient-success: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+  --gradient-warning: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+  --gradient-dark: linear-gradient(135deg, #434343 0%, #000000 100%);
+  --gradient-soft: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
+  color: var(--color-gray-900);
+  background: var(--gradient-soft);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+/* Soft UI Card Styles */
+@layer components {
+  .card-soft {
+    @apply bg-white backdrop-blur-sm;
+    border-radius: 0.75rem;
+    box-shadow: var(--shadow-soft);
+    transition: all 0.3s ease;
+  }
+  
+  .card-soft:hover {
+    box-shadow: var(--shadow-soft-md);
+    transform: translateY(-2px);
+  }
+  
+  .card-soft-md {
+    @apply bg-white backdrop-blur-sm;
+    border-radius: 1rem;
+    box-shadow: var(--shadow-soft-md);
+    transition: all 0.3s ease;
+  }
+  
+  .card-soft-md:hover {
+    box-shadow: var(--shadow-soft-lg);
+    transform: translateY(-2px);
+  }
+  
+  .card-soft-lg {
+    @apply bg-white backdrop-blur-sm;
+    border-radius: 1rem;
+    box-shadow: var(--shadow-soft-lg);
+    transition: all 0.3s ease;
+  }
+  
+  .card-soft-lg:hover {
+    box-shadow: var(--shadow-soft-xl);
+    transform: translateY(-2px);
+  }
+  
+  .card-gradient {
+    @apply rounded-xl text-white;
+    background: var(--gradient-primary);
+    box-shadow: var(--shadow-colored);
+  }
+  
+  .card-gradient-info {
+    @apply rounded-xl text-white;
+    background: var(--gradient-info);
+    box-shadow: 0 8px 16px -4px rgba(23, 193, 232, 0.4);
+  }
+  
+  .card-gradient-success {
+    @apply rounded-xl text-white;
+    background: var(--gradient-success);
+    box-shadow: 0 8px 16px -4px rgba(130, 214, 22, 0.4);
+  }
+  
+  .card-gradient-warning {
+    @apply rounded-xl text-white;
+    background: var(--gradient-warning);
+    box-shadow: 0 8px 16px -4px rgba(251, 207, 51, 0.4);
+  }
+  
+  .input-soft {
+    @apply w-full px-4 py-2.5 border border-gray-300 rounded-xl 
+           focus:ring-2 focus:ring-primary focus:border-transparent 
+           transition-all duration-200 bg-white text-gray-900;
+  }
+  
+  .input-soft:focus {
+    box-shadow: 0 0 0 3px rgba(203, 12, 159, 0.1);
+  }
+  
+  .input-soft::placeholder {
+    @apply text-gray-400;
+  }
+  
+  .btn-soft {
+    @apply px-6 py-2.5 rounded-xl font-medium transition-all duration-200 
+           active:scale-95 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .btn-soft:hover {
+    box-shadow: var(--shadow-soft-md);
+    transform: translateY(-1px);
+  }
+  
+  .btn-soft:active {
+    transform: translateY(0) scale(0.98);
+  }
+  
+  .btn-soft-primary {
+    @apply btn-soft bg-primary text-white focus:ring-primary;
+  }
+  
+  .btn-soft-primary:hover {
+    background-color: var(--color-primary-dark);
+    box-shadow: var(--shadow-colored);
+  }
+  
+  .btn-soft-secondary {
+    @apply btn-soft bg-secondary text-white focus:ring-secondary;
+  }
+  
+  .btn-soft-secondary:hover {
+    background-color: var(--color-secondary-dark);
+  }
+  
+  .btn-soft-outline {
+    @apply btn-soft border-2 border-primary text-primary bg-transparent focus:ring-primary;
+  }
+  
+  .btn-soft-outline:hover {
+    background-color: var(--color-primary);
+    color: white;
+    box-shadow: var(--shadow-colored);
+  }
+  
+  .btn-gradient {
+    @apply btn-soft text-white focus:ring-primary;
+    background: var(--gradient-primary);
+    box-shadow: var(--shadow-colored);
+  }
+  
+  .btn-gradient:hover {
+    box-shadow: var(--shadow-colored-md);
+    transform: translateY(-2px);
+  }
+  
+  .badge-soft {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-medium;
+    box-shadow: var(--shadow-soft);
+  }
+  
+  .badge-primary {
+    @apply badge-soft bg-primary text-white;
+  }
+  
+  .badge-secondary {
+    @apply badge-soft bg-secondary text-white;
+  }
+  
+  .badge-success {
+    @apply badge-soft bg-success text-white;
+  }
+  
+  .badge-warning {
+    @apply badge-soft bg-warning text-white;
+  }
+  
+  .badge-error {
+    @apply badge-soft bg-error text-white;
+  }
+  
+  .badge-info {
+    @apply badge-soft bg-info text-white;
+  }
+}
+
+/* Animations Soft UI */
+@layer utilities {
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+  
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient 3s ease infinite;
+  }
+  
+  @keyframes gradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+  
+  .animate-fadeIn {
+    animation: fadeIn 0.3s ease-in-out;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  .animate-slideInRight {
+    animation: slideInRight 0.3s ease-out;
+  }
+  
+  @keyframes slideInRight {
+    from {
+      transform: translateX(100%);
+      opacity: 0;
+    }
+    to {
+      transform: translateX(0);
+      opacity: 1;
+    }
+  }
+}
+
+/* Support RTL pour l'arabe */
+[dir="rtl"] {
+  direction: rtl;
+}
+
+[dir="ltr"] {
+  direction: ltr;
+}
+
+/* Scrollbar personnalisée Soft UI */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-gray-100);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-gray-400);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gray-500);
+}
+
+/* Responsive Design - Améliorations mobile/tablette */
+@media (max-width: 640px) {
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  .card-soft,
+  .card-soft-md,
+  .card-soft-lg {
+    border-radius: 0.5rem;
+  }
+  
+  .btn-soft {
+    padding: 0.625rem 1rem;
+    font-size: 0.875rem;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+/* Lazy loading pour les images */
+img {
+  loading: lazy;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Amélioration de la performance - Optimisation des transitions */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,595 @@
+/**
+ * Service d'authentification
+ * 
+ * Ce service gère l'inscription, la connexion et la déconnexion des utilisateurs.
+ * 
+ * Pour ce MVP, nous utilisons un système simple avec Supabase :
+ * - Les mots de passe sont hashés avec bcrypt côté serveur (via Edge Function)
+ * - Les sessions sont gérées avec localStorage
+ * - Les tokens JWT sont générés côté serveur
+ * 
+ * Note : Pour la production, il serait mieux d'utiliser Supabase Auth directement,
+ * mais pour ce MVP, nous utilisons nos tables custom pour plus de contrôle.
+ */
+
+import { supabase } from './supabase';
+
+/**
+ * Inscrit un nouveau client
+ * @param {Object} userData - Données du client
+ * @param {string} userData.email - Email du client
+ * @param {string} userData.password - Mot de passe en clair
+ * @param {string} userData.firstName - Prénom
+ * @param {string} userData.lastName - Nom
+ * @param {string} userData.phone - Téléphone (optionnel)
+ * @param {string} userData.language - Langue préférée (fr/ar/en)
+ * @returns {Promise<Object>} - Résultat avec success et user ou error
+ */
+export async function signUpClient(userData) {
+  try {
+    // Appeler une Edge Function Supabase pour hasher le mot de passe
+    // Pour l'instant, on va utiliser une approche simple avec Supabase Auth
+    // qui gère déjà le hachage des mots de passe
+    
+    // Créer l'utilisateur avec Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: userData.email,
+      password: userData.password,
+      options: {
+        data: {
+          first_name: userData.firstName,
+          last_name: userData.lastName,
+          phone: userData.phone,
+          language: userData.language || 'fr',
+          user_type: 'client',
+        },
+      },
+    });
+
+    if (authError) {
+      throw authError;
+    }
+
+    // Créer l'entrée dans notre table users custom
+    // Note: Si l'insertion échoue, l'utilisateur pourra toujours se connecter
+    // et nous créerons l'entrée lors de la première connexion
+    const { data: userDataResult, error: userError } = await supabase
+      .from('users')
+      .insert([
+        {
+          id: authData.user.id,
+          email: userData.email,
+          password_hash: 'hashed_by_supabase_auth', // Supabase Auth gère le hash
+          first_name: userData.firstName,
+          last_name: userData.lastName,
+          phone: userData.phone,
+          language: userData.language || 'fr',
+        },
+      ])
+      .select()
+      .single();
+
+    // Si l'insertion échoue mais que l'auth a réussi, on retourne quand même un succès
+    // L'utilisateur pourra se connecter et l'entrée sera créée lors de la connexion
+    if (userError && userError.code !== '23505') { // 23505 = duplicate key (déjà existant)
+      console.warn('Erreur création entrée users, mais auth réussi:', userError);
+    }
+
+    // Si l'entrée existe déjà ou a été créée, la récupérer
+    let finalUserData = userDataResult;
+    if (!finalUserData) {
+      const { data: existingUser } = await supabase
+        .from('users')
+        .select('id, email, first_name, last_name, phone, language, allergies, dietary_preferences, image_url, created_at')
+        .eq('id', authData.user.id)
+        .single();
+      finalUserData = existingUser;
+    }
+
+    // Retourner les données sans le password_hash
+    const { password_hash, ...userWithoutPassword } = finalUserData || {};
+    return {
+      success: true,
+      user: userWithoutPassword,
+      session: authData.session,
+    };
+  } catch (error) {
+    console.error('Erreur inscription client:', error);
+    return {
+      success: false,
+      error: error.message || 'Une erreur est survenue lors de l\'inscription',
+    };
+  }
+}
+
+/**
+ * Connecte un client
+ * @param {string} email - Email du client
+ * @param {string} password - Mot de passe
+ * @returns {Promise<Object>} - Résultat avec success et user/session ou error
+ */
+export async function loginClient(email, password) {
+  try {
+    // Utiliser Supabase Auth pour la connexion
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    // Récupérer les données utilisateur depuis notre table custom
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('id, email, first_name, last_name, phone, language, allergies, dietary_preferences, image_url, created_at')
+      .eq('id', data.user.id)
+      .single();
+
+    if (userError) {
+      throw userError;
+    }
+
+    return {
+      success: true,
+      user: userData,
+      session: data.session,
+    };
+  } catch (error) {
+    console.error('Erreur connexion client:', error);
+    return {
+      success: false,
+      error: error.message || 'Email ou mot de passe incorrect',
+    };
+  }
+}
+
+/**
+ * Déconnecte l'utilisateur actuel
+ * @returns {Promise<Object>} - Résultat avec success ou error
+ */
+export async function logoutClient() {
+  try {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      throw error;
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('Erreur déconnexion:', error);
+    return {
+      success: false,
+      error: error.message || 'Une erreur est survenue lors de la déconnexion',
+    };
+  }
+}
+
+/**
+ * Récupère l'utilisateur actuellement connecté
+ * @returns {Promise<Object|null>} - Utilisateur connecté ou null
+ */
+export async function getCurrentUser() {
+  try {
+    // Récupérer la session actuelle avec timeout
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout session')), 5000)
+    );
+    
+    const { data: { session }, error: sessionError } = await Promise.race([
+      sessionPromise,
+      timeoutPromise
+    ]).catch(() => ({ data: { session: null }, error: { message: 'Timeout' } }));
+    
+    if (sessionError || !session) {
+      return null;
+    }
+
+    // Récupérer les données utilisateur depuis notre table custom avec timeout
+    const userPromise = supabase
+      .from('users')
+      .select('id, email, first_name, last_name, phone, language, allergies, dietary_preferences, image_url, created_at')
+      .eq('id', session.user.id)
+      .single();
+    
+    const timeoutPromise2 = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Timeout user data')), 5000)
+    );
+    
+    const { data: userData, error: userError } = await Promise.race([
+      userPromise,
+      timeoutPromise2
+    ]).catch((err) => {
+      console.warn('Timeout ou erreur récupération données utilisateur:', err);
+      return { data: null, error: { message: 'Timeout' } };
+    });
+
+    if (userError) {
+      // Si l'erreur est "not found" ou RLS, c'est normal si pas d'utilisateur
+      // Ne pas déconnecter en cas d'erreur 406 (Not Acceptable) - c'est juste une erreur de requête
+      const is406Error = userError.status === 406 || 
+                         userError.statusCode === 406 ||
+                         userError.code === '406' ||
+                         userError.message?.includes('406') ||
+                         userError.message?.includes('Not Acceptable');
+      
+      if (userError.code === 'PGRST116' || 
+          userError.message?.includes('timeout') ||
+          is406Error) {
+        // Vérifier si on a toujours une session valide
+        try {
+          const { data: { session: checkSession } } = await supabase.auth.getSession();
+          if (checkSession) {
+            // Si on a une session mais pas de données utilisateur, retourner null sans déconnecter
+            // L'utilisateur reste connecté même si on ne peut pas récupérer ses données
+            return null;
+          }
+        } catch (sessionError) {
+          // Si on ne peut pas vérifier la session, retourner null
+          console.warn('Erreur vérification session:', sessionError);
+        }
+        return null;
+      }
+      console.warn('Erreur récupération utilisateur:', userError);
+      return null;
+    }
+
+    if (!userData) {
+      return null;
+    }
+
+    return userData;
+  } catch (error) {
+    // Erreur de timeout ou autre erreur
+    if (error.message?.includes('Timeout')) {
+      console.warn('Timeout récupération utilisateur');
+    } else {
+      console.error('Erreur récupération utilisateur:', error);
+    }
+    return null;
+  }
+}
+
+/**
+ * Met à jour le profil de l'utilisateur connecté
+ * @param {Object} profileData - Données à mettre à jour
+ * @param {string} [profileData.firstName] - Prénom
+ * @param {string} [profileData.lastName] - Nom
+ * @param {string} [profileData.phone] - Téléphone
+ * @param {string} [profileData.language] - Langue préférée (fr/ar/en)
+ * @param {Array<string>} [profileData.allergies] - Liste des allergies
+ * @param {Array<string>} [profileData.dietaryPreferences] - Préférences alimentaires
+ * @returns {Promise<Object>} - Résultat avec success et user ou error
+ */
+export async function updateUserProfile(profileData) {
+  try {
+    // Récupérer l'utilisateur actuel
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      throw new Error('Vous devez être connecté pour mettre à jour votre profil');
+    }
+
+    // Préparer les données à mettre à jour (seulement les champs fournis)
+    const updateData = {};
+    if (profileData.firstName !== undefined) updateData.first_name = profileData.firstName;
+    if (profileData.lastName !== undefined) updateData.last_name = profileData.lastName;
+    if (profileData.phone !== undefined) updateData.phone = profileData.phone;
+    if (profileData.language !== undefined) updateData.language = profileData.language;
+    if (profileData.allergies !== undefined) updateData.allergies = profileData.allergies;
+    if (profileData.dietaryPreferences !== undefined) updateData.dietary_preferences = profileData.dietaryPreferences;
+
+    // Mettre à jour dans la table users
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('users')
+      .update(updateData)
+      .eq('id', session.user.id)
+      .select('id, email, first_name, last_name, phone, language, allergies, dietary_preferences, image_url, created_at')
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    // Mettre à jour aussi les métadonnées Supabase Auth si nécessaire
+    if (profileData.firstName || profileData.lastName || profileData.phone || profileData.language) {
+      await supabase.auth.updateUser({
+        data: {
+          first_name: updatedUser.first_name,
+          last_name: updatedUser.last_name,
+          phone: updatedUser.phone,
+          language: updatedUser.language,
+        },
+      });
+    }
+
+    return {
+      success: true,
+      user: updatedUser,
+    };
+  } catch (error) {
+    console.error('Erreur mise à jour profil:', error);
+    return {
+      success: false,
+      error: error.message || 'Une erreur est survenue lors de la mise à jour du profil',
+    };
+  }
+}
+
+/**
+ * Upload une image de profil pour l'utilisateur connecté
+ * @param {File} file - Fichier image à uploader
+ * @returns {Promise<Object>} - Résultat avec success et url ou error
+ */
+export async function uploadUserImage(file) {
+  try {
+    // Récupérer l'utilisateur actuel
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      throw new Error('Vous devez être connecté pour uploader une image');
+    }
+
+    // Créer un nom de fichier unique
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${session.user.id}/${Date.now()}.${fileExt}`;
+
+    console.log('[uploadUserImage] Début upload image pour utilisateur:', session.user.id);
+    console.log('[uploadUserImage] Nom du fichier:', fileName);
+
+    // Supprimer l'ancienne image si elle existe
+    try {
+      const { data: userData } = await supabase
+        .from('users')
+        .select('image_url')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (userData?.image_url) {
+        // Extraire le chemin du fichier depuis l'URL
+        const oldFilePath = userData.image_url.split('/user-images/').pop()?.split('?')[0];
+        if (oldFilePath && !oldFilePath.startsWith('http')) {
+          console.log('[uploadUserImage] Suppression ancienne image:', oldFilePath);
+          await supabase.storage
+            .from('user-images')
+            .remove([oldFilePath]);
+        }
+      }
+    } catch (error) {
+      console.warn('[uploadUserImage] Erreur suppression ancienne image (non critique):', error);
+    }
+
+    // Uploader la nouvelle image
+    const { data, error } = await supabase.storage
+      .from('user-images')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false,
+      });
+
+    if (error) {
+      throw error;
+    }
+
+    // Obtenir l'URL publique
+    const { data: urlData } = supabase.storage
+      .from('user-images')
+      .getPublicUrl(fileName);
+
+    console.log('[uploadUserImage] Upload réussi, URL:', urlData.publicUrl);
+
+    // Mettre à jour l'URL de l'image dans la base de données
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ image_url: urlData.publicUrl })
+      .eq('id', session.user.id);
+
+    if (updateError) {
+      console.error('[uploadUserImage] Erreur mise à jour image_url dans BDD:', updateError);
+      throw updateError;
+    }
+
+    console.log('[uploadUserImage] Image_url mise à jour dans la BDD');
+
+    return {
+      success: true,
+      url: urlData.publicUrl,
+    };
+  } catch (error) {
+    console.error('Erreur upload image utilisateur:', error);
+    return {
+      success: false,
+      error: error.message || 'Une erreur est survenue lors de l\'upload de l\'image',
+    };
+  }
+}
+
+/**
+ * Écoute les changements d'authentification
+ * @param {Function} callback - Fonction appelée quand l'état d'auth change
+ * @returns {Object} - Objet avec data.subscription pour se désabonner
+ */
+export function onAuthStateChange(callback) {
+  return supabase.auth.onAuthStateChange(async (event, session) => {
+    if (session) {
+      const user = await getCurrentUser();
+      callback(user, session);
+    } else {
+      callback(null, null);
+    }
+  });
+}
+
+
+/**
+ * Upload l'image de profil d'un restaurant
+ * @param {File} file - Le fichier image à uploader
+ * @returns {Promise<{success: boolean, path: string, url: string}>}
+ */
+export async function uploadRestaurantImage(file) {
+  try {
+    console.log('[uploadRestaurantImage] Début upload:', {
+      fileName: file.name,
+      fileType: file.type,
+      fileSize: file.size
+    });
+
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      throw new Error('Vous devez être connecté pour uploader une image');
+    }
+
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Le fichier doit être une image');
+    }
+
+    const { data: restaurant, error: restaurantError } = await supabase
+      .from('restaurants')
+      .select('id, image_url')
+      .eq('user_id', session.user.id)
+      .single();
+
+    if (restaurantError) {
+      console.error('[uploadRestaurantImage] Erreur récupération restaurant:', restaurantError);
+      throw new Error('Restaurant non trouvé');
+    }
+
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    const fileName = `${restaurant.id}/${Date.now()}.${fileExt}`;
+
+    console.log('[uploadRestaurantImage] Upload vers:', fileName);
+
+    if (restaurant.image_url) {
+      const oldFilePath = restaurant.image_url.split('/restaurant-images/').pop()?.split('?')[0];
+      if (oldFilePath && !oldFilePath.startsWith('http')) {
+        console.log('[uploadRestaurantImage] Suppression ancienne image:', oldFilePath);
+        await supabase.storage
+          .from('restaurant-images')
+          .remove([oldFilePath]);
+      }
+    }
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('restaurant-images')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type
+      });
+
+    if (uploadError) {
+      console.error('[uploadRestaurantImage] Erreur upload:', uploadError);
+      throw uploadError;
+    }
+
+    console.log('[uploadRestaurantImage] Upload réussi:', uploadData);
+
+    const { data: urlData } = supabase.storage
+      .from('restaurant-images')
+      .getPublicUrl(fileName);
+
+    console.log('[uploadRestaurantImage] URL publique:', urlData.publicUrl);
+
+    const { error: updateError } = await supabase
+      .from('restaurants')
+      .update({ 
+        image_url: fileName,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', restaurant.id);
+
+    if (updateError) {
+      console.error('[uploadRestaurantImage] Erreur mise à jour BDD:', updateError);
+      await supabase.storage.from('restaurant-images').remove([fileName]);
+      throw updateError;
+    }
+
+    console.log('[uploadRestaurantImage] Image et BDD mises à jour avec succès');
+
+    return { 
+      success: true, 
+      path: fileName,
+      url: urlData.publicUrl
+    };
+  } catch (error) {
+    console.error('[uploadRestaurantImage] Erreur:', error);
+    return {
+      success: false,
+      error: error.message || 'Une erreur est survenue lors de l\'upload de l\'image'
+    };
+  }
+}
+
+/**
+ * Upload l'image d'un plat
+ * @param {File} file - Le fichier image
+ * @param {string} menuItemId - ID du plat
+ * @returns {Promise<{success: boolean, path: string, url: string}>}
+ */
+export async function uploadMenuItemImage(file, menuItemId) {
+  try {
+    console.log('[uploadMenuItemImage] Début upload pour plat:', menuItemId);
+
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
+    if (sessionError || !session) {
+      throw new Error('Vous devez être connecté pour uploader une image');
+    }
+
+    if (!file.type.startsWith('image/')) {
+      throw new Error('Le fichier doit être une image');
+    }
+
+    const fileExt = file.name.split('.').pop().toLowerCase();
+    const fileName = `${menuItemId}/${Date.now()}.${fileExt}`;
+
+    console.log('[uploadMenuItemImage] Upload vers:', fileName);
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('menu-images')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false,
+        contentType: file.type
+      });
+
+    if (uploadError) {
+      console.error('[uploadMenuItemImage] Erreur upload:', uploadError);
+      throw uploadError;
+    }
+
+    console.log('[uploadMenuItemImage] Upload réussi:', uploadData);
+
+    const { data: urlData } = supabase.storage
+      .from('menu-images')
+      .getPublicUrl(fileName);
+
+    return { 
+      success: true, 
+      path: fileName,
+      url: urlData.publicUrl
+    };
+  } catch (error) {
+    console.error('[uploadMenuItemImage] Erreur:', error);
+    return {
+      success: false,
+      error: error.message || 'Une erreur est survenue lors de l\'upload de l\'image'
+    };
+  }
+}
+
+/**
+ * Récupère la session courante
+ * @returns {Promise<Object|null>} - Session ou null
+ */
+export async function getSession() {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session;
+  } catch (error) {
+    console.error('Erreur récupération session:', error);
+    return null;
+  }
+}
